@@ -1,0 +1,599 @@
+---
+title: "Diamond Market Modeling Project"
+author: "Ivan Gladnikov"
+format: pdf
+editor: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(car)
+library(MASS)
+```
+
+# Data Description and Descriptive Statistics
+
+## Selecting a random sample
+
+```{r}
+# Load the dataset
+diamonds_data <- read.csv("Diamonds Prices2022.csv")
+set.seed(67)
+# Select a random sample of 1000 observations
+diamonds_sample <- diamonds_data[sample(nrow(diamonds_data), 1000), ]
+head(diamonds_sample)
+```
+
+## Describing all the variables
+
+```{r Summary}
+# Summary
+summary(diamonds_sample)
+
+# Structure
+str(diamonds_sample)
+```
+
+### Variable Descriptions
+
+The sample contains the following variables:
+
+**Response Variable:**
+
+-   price: Price of the diamond in US dollars ranging from \$361 to
+    \$18806. This is the target variable for prediction. It's very skewed, with a few high outliers affecting the statistics.
+
+**Quantitative Predictor Variables:**
+
+-   carat: Weight of the diamond ranging from 0.2 to 3.0 carats. Carat is highly right-skewed, suggesting a few very large diamonds dominate the distribution. This may violate linearity and homoscedasticity assumptions and foreshadows the need for log transformation.
+
+-   depth: Measures how deep the diamond is relative to its width
+    ranging from 43% to 69.5%. It's pretty balanced out but still expected to add value to the model.
+
+-   table: Width of the top of the diamond relative to its widest point
+    ranging from 52% to 67%. However, 67% seems to be an outlier judging by the mean and median being 57 and the third quartile being 59.
+
+-   x: Length of the diamond in millimeters ranging from 3.73mm to
+    9.38mm. 
+
+-   y: Width of the diamond in millimeters ranging from 3.71mm to
+    9.31mm.
+
+-   z: Depth of the diamond in millimeters ranging from 0mm to 5.41mm.
+    (A measurement of 0mm is impossible which means that I have to
+    remove some observations where measurements are 0mm.
+    
+-   x, y, and z are all relatively balanced - skew-free, avoiding homoscedasticity and the need for log transformation. 
+
+**Categorical Predictor Variables:**
+
+-   cut: Quality of the diamond cut. The scale goes in order from worst
+    to best (Fair, Good, Very Good, Premium, Ideal).
+
+-   color: Diamond color grade from worst to best (J to D).
+
+-   clarity: Measure of the diamonds internal flaws ranging from (I1 \<
+    SI2 \< SI1 \< VS2 \< VVS2 \< VVS1 \< IF).
+
+```{r Histograms, fig.height=8, fig.width=10}
+# Histograms for continuous variables
+par(mfrow = c(3, 3))
+
+hist(diamonds_sample$carat, main = "Carat", 
+     xlab = "Carat", col = "lightblue")
+hist(diamonds_sample$depth, main = "Depth", 
+     xlab = "Depth", col = "lightgreen")
+hist(diamonds_sample$table, main = "Table", 
+     xlab = "Table", col = "lightcoral")
+hist(diamonds_sample$price, main = "Price", 
+     xlab = "Price", col = "lightyellow")
+hist(diamonds_sample$x, main = "X (Length)", 
+     xlab = "X", col = "lightpink")
+hist(diamonds_sample$y, main = "Y (Width)", 
+     xlab = "Y", col = "lightgray")
+hist(diamonds_sample$z, main = "Z (Depth)", 
+     xlab = "Z", col = "lavender")
+```
+
+Comments on their Distributions: - Price and carat are right-skewed -
+Depth seems normal and stable - Table and X,Y,Z have high variability -
+X, Y, Z are slightly right-skewed. The skewness in price and carat suggests the presence of multiplicative relationships, which motivates the log transformation used later.
+
+```{r Bar Plots, fig.height=4, fig.width=10}
+# Bar plots for categorical variables
+par(mfrow = c(1, 3))
+
+barplot(table(diamonds_sample$color), main = "Color", 
+        col = "salmon", las=1, horiz=TRUE)
+barplot(table(diamonds_sample$cut), main = "Cut", 
+        col = "skyblue", las=1, horiz=TRUE)
+barplot(table(diamonds_sample$clarity), main = "Clarity", 
+        col = "palegreen", las=1, horiz=TRUE)
+```
+
+Comments on Categorical Variables: Most diamonds have ideal or premium
+cuts. Distribution is fairly even across G, E, F, and H grades with
+fewer diamonds at the extremes (D and J) and I grades. SI1 and VS2 are
+the most common clarity grades, representing mid-range quality. 
+
+## Choosing variables and determine correlation
+
+```{r fig.height=10, fig.width=10}
+## Question 3: Choose variables and determine correlation
+
+# Select 3 quantitative variables: table, carat, depth
+# Select 2 categorical variables: cut, clarity
+
+# 1. Correlation between QUANTITATIVE variables
+quant_vars <- diamonds_sample[, c("price", "table", "carat", "depth")]
+cor_matrix <- cor(quant_vars)
+round(cor_matrix, 3)
+
+# 2. Relationship between CATEGORICAL and QUANTITATIVE variables using ANOVA
+# ANOVA tests if mean of quantitative variable differs across categorical groups
+#Commenting out Summary to remove Clutter
+
+# Test if mean price differs across cut categories
+aov_price_cut <- aov(price ~ cut, data = diamonds_sample)
+#summary(aov_price_cut)
+
+# Test if mean price differs across clarity categories
+aov_price_clarity <- aov(price ~ clarity, data = diamonds_sample)
+#summary(aov_price_clarity)
+
+# Test relationships for other quantitative variables
+# Carat vs categorical variables
+aov_carat_cut <- aov(carat ~ cut, data = diamonds_sample)
+#summary(aov_carat_cut)
+
+aov_carat_clarity <- aov(carat ~ clarity, data = diamonds_sample)
+#summary(aov_carat_clarity)
+
+# Table vs categorical variables
+aov_table_cut <- aov(table ~ cut, data = diamonds_sample)
+#summary(aov_table_cut)
+
+aov_table_clarity <- aov(table ~ clarity, data = diamonds_sample)
+#summary(aov_table_clarity)
+
+# Depth vs categorical variables  
+aov_depth_cut <- aov(depth ~ cut, data = diamonds_sample)
+#summary(aov_depth_cut)
+
+aov_depth_clarity <- aov(depth ~ clarity, data = diamonds_sample)
+#summary(aov_depth_clarity)
+
+# Visualize relationships between categorical and quantitative variables
+par(mfrow = c(3, 4))
+
+# Price vs categorical variables
+boxplot(price ~ cut, data = diamonds_sample, 
+        main = "Price by Cut", las = 2, col = "lightblue")
+boxplot(price ~ clarity, data = diamonds_sample,
+        main = "Price by Clarity", las = 2, col = "lightcoral")
+
+# Carat vs categorical variables
+boxplot(carat ~ cut, data = diamonds_sample,
+        main = "Carat by Cut", las = 2, col = "lightyellow")
+boxplot(carat ~ clarity, data = diamonds_sample,
+        main = "Carat by Clarity", las = 2, col = "lavender")
+
+# Table vs categorical variables
+boxplot(table ~ cut, data = diamonds_sample,
+        main = "Table by Cut", las = 2, col = "lightgray")
+boxplot(table ~ clarity, data = diamonds_sample,
+        main = "Table by Clarity", las = 2, col = "palegreen")
+
+# Depth vs categorical variables
+boxplot(depth ~ cut, data = diamonds_sample,
+        main = "Depth by Cut", las = 2, col = "skyblue")
+boxplot(depth ~ clarity, data = diamonds_sample,
+        main = "Depth by Clarity", las = 2, col = "plum")
+
+# Interpretation of ANOVA results:
+# If p-value < 0.05: There is a significant relationship (the means differ across groups)
+# If p-value > 0.05: No significant relationship (the means are similar across groups)
+```
+
+```{r without Anova}
+# 3 quantitative variables: table, carat, depth
+# 2 categorical variables: cut, color
+
+# Correlation matrix
+quant_vars <- diamonds_sample[, c("price", "table", "carat", "depth")]
+cor_matrix <- cor(quant_vars)
+round(cor_matrix, 3)
+```
+
+**Correlation Interpretation:**
+
+-   Price-Carat (r = 0.913): Very strong positive correlation. Carat
+    weight is the strongest predictor of price.
+
+-   Price-Depth (r = -0.012): Negligible correlation. Depth percentage
+    has little linear relationship with price.
+
+-   Price-Table (r = 0.117): Weak positive correlation. Table width has
+    minimal impact on price.
+
+-   Carat-Depth/Table: Weak correlations.
+
+-   Depth-Table: Weak negative correlation.
+
+-   Overall weak correlations is a strong sign that the model will work 
+    efficiently as multicollinearity is avoided here, as well as each variable 
+    being useful to the model in explaining variance. Carat will provide 
+    the most value to the model, so it is a necessity in every case.
+
+
+**ANOVA Results Summary:** All categorical variables tested (cut, clarity) 
+show statistically significant relationships with price,
+indicating that mean prices differ across quality categories. 
+ANOVA confirms all three factors significantly affect price (p < 0.001). 
+The boxplots show monotonic trends, meaning higher quality consistently leads to higher price.
+
+## Multiple linear regression model
+
+```{r}
+model_initial <- lm(price ~ carat + cut + clarity + depth + table, 
+                    data = diamonds_sample)
+summary(model_initial)
+```
+
+## Comments
+
+1.  Price shows a very strong positive correlation with carat. This
+    confirms that the weight of the diamond is valuable predictor of
+    diamond price.
+2.  Both price and carat are highly right-skewed. This suggests that
+    log-transformations will likely improve model assumptions. It also
+    means that the high-end diamonds will have more variance, being 
+    harder to predict, and the model will likely be less accurate.
+3.  Most diamonds in the sample have Ideal or Premium cuts, G or E
+    colors, and SI1 or VS2 clarity grade which shows that the sample
+    contains mostly mid to high quality diamonds.
+4.  ANOVA results confirmed that cut and clarity significantly affect
+    price.
+
+#Simple Linear Regression
+
+## Starting with one predictor and one response
+
+```{r}
+slr_model <- lm(price ~ carat, data = diamonds_sample)
+```
+
+##  Running the model and examining summary statistics
+
+```{r Summary}
+summary(slr_model)
+```
+
+```{r Intervals}
+# Confidence intervals for coefficients
+confint(slr_model)
+
+# Create a new data point for prediction
+new_data <- data.frame(carat = 0.5)
+
+# Confidence interval for mean response
+predict(slr_model, newdata = new_data, interval = "confidence")
+
+# Prediction interval for individual response
+predict(slr_model, newdata = new_data, interval = "prediction")
+```
+
+```{r Plot, fig.height=4, fig.width=8}
+# Scatter plot with regression line
+par(mfrow = c(1, 2))
+plot(diamonds_sample$carat, diamonds_sample$price,
+     xlab = "Carat", ylab = "Price",
+     main = "Price vs Carat")
+abline(slr_model, col = "red", lwd = 2)
+
+# QQ plot for residuals
+qqnorm(slr_model$residuals)
+qqline(slr_model$residuals, col = "red")
+```
+
+-   **Carat Coefficient Estimate:** The slope ($\beta_1$) of
+    $\mathbf{7789.2}$ indicates that a one 'carat' increase is
+    associated with a predicted increase in 'price' of
+    $\mathbf{\$7,789.2}$.
+-   **Hypothesis Test:** The overall F-statistic is highly significant
+    ($\mathbf{P < 2\text{e-}16}$), meaning the model is statistically
+    valid and the 'carat' coefficient is significantly non-zero.
+-   **Multiple** $R^2$: The value of $\mathbf{0.8341}$ shows that
+    $\mathbf{83.41\%}$ of the total variability in 'price' is explained
+    by the 'carat' predictor.
+-   **Adjusted** $R^2$: The value of $\mathbf{0.8339}$ is negligibly
+    lower than Multiple $R^2$, indicating that the model's fit is good
+    even after accounting for the use of one predictor.
+-   **Residual Standard Error (RSE):** The RSE of $\mathbf{\$1,650}$ is
+    large, meaning that the average prediction error is high.
+-   **Confidence Interval (CI):** This interval provides the likely
+    range for the **true mean price** of all diamonds sharing a specific
+    'carat' weight.
+-   **Prediction Interval (PI):** This interval provides the wider,
+    likely range for the 'price' of a **single, new diamond** of a
+    specific 'carat' weight.
+-   **Plot & Assumptions:** The scatterplot and residual diagnostics
+    visually confirm a **curved, fanned-out relationship**, violating
+    the core assumptions of linearity and homoscedasticity.
+
+## Testing assumptions and applying transformations
+
+```{r fig.height=10, fig.width=10}
+# Testing Assumptions
+par(mfrow = c(2, 2))
+plot(slr_model)
+
+# Applying Log transformation to both response and predictor
+diamonds_sample$log_price <- log(diamonds_sample$price)
+diamonds_sample$log_carat <- log(diamonds_sample$carat)
+```
+
+**Assumption Assessment and Transformation Decision:** The diagnostics
+plots from the simple model show clear **non-linearity** (a curve in the
+Residuals vs Fitted plot) and severe **heteroscedasticity** (a funnel
+shape). The Normal Q-Q plot also indicates highly non-normal residuals
+due to the right skew of 'price'.
+
+To correct these violations and validate the model's assumptions, I
+applied a **log-log transformation** to both the response variable (price)
+and the predictor (carat).
+
+### Summary of Transformed Variables and Changes
+
+The model is refitted as $\log(\text{price}) \sim \log(\text{carat})$.
+
+```{r Summary Transformed}
+# New model with transformed response
+slr_transformed <- lm(log_price ~ log_carat, data = diamonds_sample)
+```
+
+```{r, fig.height=10, fig.width=10}
+# Diagnostic plots for transformed model
+par(mfrow = c(2, 2))
+plot(slr_transformed)
+```
+
+```{r Summary}
+summary(slr_transformed)
+```
+
+**Changes Noted:** The diagnostic plots for the transformed model show
+vast improvement: the **Residuals vs. Fitted** plot now shows a random
+scatter, confirming **linearity and homoscedasticity** are largely
+restored. The **Normal Q-Q plot** shows points falling much closer to
+the theoretical line, indicating normality of residuals is improved. The
+Adjusted $R^2$ is higher, and the Residual Standard Error is reported on
+the log scale, reflecting the significant reduction in scatter and error
+compared to the raw price scale.
+
+## Adding other variables and assessing improvement
+
+```{r Models, include=FALSE}
+# Model 1: carat
+model1 <- lm(log_price ~ log_carat, data = diamonds_sample)
+paste("Model 1:", summary(model1)$adj.r.squared)
+
+# Model 2: carat + depth
+model2 <- lm(log_price ~ log_carat + depth, data = diamonds_sample)
+paste("Model 2:", summary(model2)$adj.r.squared)
+
+# Model 3: carat + depth + table
+model3 <- lm(log_price ~ log_carat + depth + table, data = diamonds_sample)
+paste("Model 3:", summary(model3)$adj.r.squared)
+
+# Model 4: carat + depth + table + cut
+model4 <- lm(log_price ~ log_carat + depth + table + cut, data = diamonds_sample)
+paste("Model 4:", summary(model4)$adj.r.squared)
+
+# Model 5: carat + depth + table + cut + color
+model5 <- lm(log_price ~ log_carat + depth + table + cut + color, data = diamonds_sample)
+paste("Model 5:", summary(model5)$adj.r.squared)
+
+# Model 6: carat + depth + table + cut + color + clarity
+model6 <- lm(log_price ~ log_carat + depth + table + cut + color + clarity, data = diamonds_sample)
+paste("Model 6:", summary(model6)$adj.r.squared)
+
+# Model 7: carat + depth + table + cut + color + clarity + x
+model7 <- lm(log_price ~ log_carat + depth + table + cut + color + clarity + x, data = diamonds_sample)
+paste("Model 7:", summary(model7)$adj.r.squared)
+
+# Model 8: carat + depth + table + cut + color + clarity + x + y
+model8 <- lm(log_price ~ log_carat + depth + table + cut + color + clarity + x + y, data = diamonds_sample)
+paste("Model 8:", summary(model8)$adj.r.squared)
+
+# Model 9: carat + depth + table + cut + color + clarity + x + y + z
+model9 <- lm(log_price ~ log_carat + depth + table + cut + color + clarity + x + y + z, data = diamonds_sample)
+paste("Model 9:", summary(model9)$adj.r.squared)
+
+# Final best model (from prior comparison)
+best_model <- model9
+```
+
+The best model includes all of the variables. Each of the variables that
+was added to the model increased the Adjusted $R^2$.
+
+## More Comments
+
+1.  The log-log transformation was necessary to satisfy the regression
+    assumptions as the original model showed violations of linearity and
+    homosecdasticity.
+2.  Adding all of the variables in the dataset improved the Adjusted
+    $R^2$ from 0.93 to 0.98.
+3.  Carat is still the most important predictor in the dataset and
+    explains about 93% of price variation of its own when log
+    transformed.
+
+# Multiple Linear Regression
+
+## Best model selection
+
+```{r Best Model}
+# Based on Part 2, the best model includes all variables with log(price)
+summary(best_model)
+```
+
+Observations from summary: - Adjusted R-squared: 0.9841 (explains 98.41%
+of variance) - Predictors depth, table, x, y, and z are not
+significant - Model is highly statistically significant
+
+```{r Backward AIC}
+# Backward elimination using AIC
+backward_aic <- step(best_model, direction = "backward", trace = FALSE)
+summary(backward_aic)
+```
+
+```{r Backward BIC}
+# Backward elimination using BIC criterion
+n <- nrow(diamonds_sample)
+backward_bic <- step(best_model, direction = "backward", k = log(n), trace = FALSE)
+summary(backward_bic)
+```
+
+```{r P3Q1 Stepwise AIC}
+# Stepwise regression using AIC on null model
+null_model <- lm(log_price ~ 1, data = diamonds_sample)
+stepwise_aic <- step(null_model, 
+                     scope = list(lower = null_model, upper = best_model),
+                     direction = "both", trace = FALSE)
+summary(stepwise_aic)
+```
+
+**Observations:** - Full model Adjusted R²: 0.9841, explaining 98.41% of
+variance in log(price) - All selection methods do not retain depth,
+table, and y - AIC and Stepwise AIC retain both x and z while BIC only
+retains x. The models explain approximately 98% of variance in
+log(price). This also hints that x and z are redundant and don't
+provide much value on their own with carat already providing 
+the same information. 
+
+## Detecting multicollinearity using VIF
+
+```{r VIF}
+# Calculate VIF for the best model
+vif_values <- vif(best_model)
+print(vif_values)
+
+# Identify bad VIF values (> 10)
+high_vif <- vif_values[vif_values > 10]
+print("Variables with VIF > 10:")
+print(high_vif)
+```
+
+**Multicollinearity Assessment:** - x, y, z, and carat have extremely
+high VIF values, which signals their multicollinearity. This is why x
+and z were removed by AIC/BIC, taking care of multicollinearity and
+at the same time improving the adjusted R^2.
+
+```{r Reduced Model}
+# Reduced Model without depth, table, x, y, and z.
+reduced_model <- lm(log_price ~ log_carat + cut + color + clarity, 
+                    data = diamonds_sample)
+summary(reduced_model)
+
+# VIF for Reduced Model
+vif_reduced <- vif(reduced_model)
+print("VIF values for reduced model:")
+print(vif_reduced)
+```
+
+All VIF values in the reduced model are below 5, indicating no
+multicollinearity. This was expected from before when analyzing 
+the correlation chart and seeing mostly low correlation between
+variables. The one exception was carat-price, but since the rest
+had low correlation with each other, the overall VIF is still healthy.
+
+## Confidence and Prediction Intervals
+
+```{r Intervals}
+# New data point for prediction
+new_observation <- data.frame(
+  log_carat = log(0.7),
+  cut = "Ideal",
+  color = "G",
+  clarity = "VS2"
+)
+
+# Confidence interval for mean response (log scale)
+ci_mean_log <- predict(reduced_model, newdata = new_observation, 
+                        interval = "confidence", level = 0.95)
+print("95% CI for mean log(price):")
+print(ci_mean_log)
+
+# Transform back to original price scale
+ci_mean_price <- exp(ci_mean_log)
+print("95% CI for mean price ($):")
+print(ci_mean_price)
+
+# Prediction interval for individual response (log scale)
+pi_individual_log <- predict(reduced_model, newdata = new_observation, 
+                             interval = "prediction", level = 0.95)
+print("95% PI for individual log(price):")
+print(pi_individual_log)
+
+# Transform back to original price scale
+pi_individual_price <- exp(pi_individual_log)
+print("95% PI for individual price ($):")
+print(pi_individual_price)
+```
+
+**Explanation:** - The confidence interval provides the range for the
+mean price of all diamonds with these characteristics - The prediction
+interval provides the range for a single diamond's price with these
+characteristics - The prediction interval is wider than the confidence
+interval, as it accounts for individual variation
+
+## Summary Report
+
+This regression analysis successfully developed a predictive model for
+diamond prices using physical characteristics and quality measures from
+a sample of 1,000 diamonds. My findings include realizing and proving
+that carat is by far the strongest predictor of a diamond's price, and
+that the other variables explain most of the variance that carat amount
+couldn't explain. Overall, the model fits very well and could comfortably
+be used on real diamond data.
+
+### Key Findings:
+
+1.  **Model Performance**:
+    -   Full model with depth, table, x, y, and z: Adjusted $R^2$ =
+        0.9841
+    -   Reduced model without depth, table, x, y, and z: Adjusted $R^2$
+        = 0.9839
+    -   Both models are an excellent fit
+    -   The reduced model is preferred due to resolved multicollinearity
+        and Stepwise AIC selection. (Unnecessary variables were removed
+        and VIF dropped to a healthy level.)
+2.  **Significant Predictors (in order of importance)**:
+    -   Carat (log-transformed): Strongest predictor with a 1% increase
+        in carat giving about a 1.7% increase in price.
+    -   Clarity: Higher clarity grades significantly increase price.
+    -   Color: Better color grades means higher prices.
+    -   Cut: Ideal cuts are valued higher than fair cuts.
+3.  **Multicollinearity**:
+    -   The original model had severe multicollinearity with severe VIF
+        scores greater than 10 for x, y, z and log_carat.
+    -   This is because x, y, and z are direct measures of size and are
+        highly correlated with carat.
+    -   I decided to remove x, y, and z to retain log_carat as the main
+        size measure.
+    -   This resulted in all VIF values being less than 5.
+4.  **Model Assumptions:**
+    -   Log-log transformation was essential for satisfying linear
+        regression assumption requirements.
+
+    -   The residual plots and tests confirm assumptions were met.
+5.  **Practical Interpretation:**
+    -   For a 0.7 carat, Ideal cut, G color, VS2 clarity diamond:
+
+    -   95% CI for mean price: Provides expected average market value
+
+    -   95% PI for individual price: Accounts for natural variation in
+        individual diamonds
